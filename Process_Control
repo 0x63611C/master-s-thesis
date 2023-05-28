@@ -1,0 +1,268 @@
+from tinkerforge.ip_connection import IPConnection
+from tinkerforge.bricklet_industrial_quad_relay_v2 import BrickletIndustrialQuadRelayV2
+from tinkerforge.bricklet_rs232_v2 import BrickletRS232V2
+from tinkerforge.bricklet_thermocouple_v2 import BrickletThermocoupleV2
+import tkinter as tk
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import pandas as pd
+from tkinter import messagebox
+import datetime
+import tkinter.filedialog
+
+UID_RELAY = "21y5"
+UID_RS232 = "VeS"
+UID_THERMOCOUPLE = "WSV"  # Replace with the actual UID of the Thermocouple Bricklet
+HOST = "localhost"
+PORT = 4223
+
+ipcon = IPConnection()
+relay_bricklet = BrickletIndustrialQuadRelayV2(UID_RELAY, ipcon)
+rs232 = BrickletRS232V2(UID_RS232, ipcon)
+thermocouple = BrickletThermocoupleV2(UID_THERMOCOUPLE, ipcon)
+
+ipcon.connect(HOST, PORT)
+
+temperature_measurement_active = False
+save_temperatures = False
+
+timestamps = []
+temperatures = []
+
+def send_command(command):
+    command += "\r\n"  # Hinzufügen von Carriage Return und Line Feed zum Befehl
+    rs232.write(command.encode())
+
+def connect():
+    ipcon.connect(HOST, PORT)
+
+def disconnect():
+    ipcon.disconnect()
+
+def set_flow_rate():
+    flow_rate_input = int(entry.get())
+    if flow_rate_input > 400:
+        error_label.config(text="Der eingegebene Wert überschreitet den maximal zulässigen Wert!")
+        return
+
+    error_label.config(text="")
+
+    flow_rate_l_per_min = flow_rate_input / 60
+    print(f"Das entspricht: {flow_rate_l_per_min} l/min")
+
+    hex_value = int((flow_rate_l_per_min * 1.35) / 10 * 32000)
+
+    hex_value_str = hex(hex_value)[2:].upper().zfill(4)
+    flow_rate_command = f":0603010121{hex_value_str}"
+    send_command(flow_rate_command)
+
+def stop_flow_rate():
+    # Befehl für 0 l/h erstellen und senden (letzte vier Ziffern für 0 l/h)
+    command = ":06030101210000"
+    send_command(command)
+
+def start_process(process_type, process_time_entry):
+    global adsorption_active, desorption_active
+    if process_type == "adsorption":
+        adsorption_active = True
+        relay_bricklet.set_value([True, True, False, True])
+        if process_time_entry.get():
+            window.after(int(process_time_entry.get()), stop_process)
+    elif process_type == "desorption":
+        desorption_active = True
+        relay_bricklet.set_value([False, False, True, False])
+        if process_time_entry.get():
+            window.after(int(process_time_entry.get()), stop_process)
+
+def stop_process():
+    global adsorption_active, desorption_active
+    if adsorption_active:
+        reset_valves()
+        adsorption_active = False
+    elif desorption_active:
+        reset_valves()
+        desorption_active = False
+
+def reset_valves():
+    relay_bricklet.set_value([False, False, False, False])
+
+# Funktion zum Auslesen der Temperatur
+def read_temperature():
+    return thermocouple.get_temperature() / 100
+
+# Funktion zur Aktualisierung des Diagramms
+def update_plot(frame):
+    global temperatures
+    if temperature_measurement_active:
+        timestamp = datetime.datetime.now()
+        temperature = read_temperature()
+
+        timestamps.append(timestamp)
+        temperatures.append(temperature)
+
+        line.set_data(range(len(temperatures)), temperatures)
+        ax.set_xlim(0, len(temperatures))
+
+    return line,
+
+def start_temperature_measurement():
+    global temperature_measurement_active, timestamps, temperatures
+    temperature_measurement_active = True
+    timestamps = []
+    temperatures = []
+
+def stop_temperature_measurement():
+    global temperature_measurement_active
+
+    temperature_measurement_active = False
+
+    ask_save_temperatures()  # Call the function to ask whether to save temperatures or not
+
+    if not save_temperatures:
+        # Zurücksetzen der Timestamps und Temperaturen
+        timestamps = []
+        temperatures = []
+
+    line.set_data([], [])  # Clear the plot
+    ax.set_xlim(0, 1)  # Reset x-axis
+    ax.set_ylim(0, 100)  # Reset y-axis
+
+def save_temperatures():
+    global save_temperatures
+    save_temperatures = True
+
+def save_temperatures_to_excel():
+    global save_temperatures, timestamps, temperatures
+    save_temperatures = True
+
+    timestamp_strings = [timestamp.strftime('%Y-%m-%d %H:%M:%S.%f') for timestamp in timestamps]  # Include milliseconds
+    df = pd.DataFrame({"Timestamp": timestamp_strings, "Temperature": temperatures})
+    df.to_excel("temperature_data.xlsx", index=False)
+    print("Temperatures saved to temperature_data.xlsx")
+
+
+def ask_save_temperatures():
+    global save_temperatures
+
+    result = messagebox.askquestion("Save Temperatures", "Do you want to save the temperature data?")
+
+    if result == "yes":
+        save_temperatures = True
+
+        # Dialogfenster zur Eingabe des Dateinamens anzeigen
+        filename = tk.filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
+
+        if filename:
+            # Temperaturdaten speichern
+            timestamp_strings = [timestamp.strftime('%Y-%m-%d %H:%M:%S.%f') for timestamp in
+                                 timestamps]  # Include milliseconds
+            df = pd.DataFrame({"Timestamp": timestamp_strings, "Temperature": temperatures})
+            df.to_excel(filename, index=False)
+            print("Temperatures saved to", filename)
+    else:
+        save_temperatures = False
+
+def exit_program():
+    global program_running
+    program_running = False
+    window.quit()  # Beendet die Tkinter-Schleife  # Beendet die Tkinter-Schleife
+
+# Fenster erstellen
+window = tk.Tk()
+window.title("Flow Rate and Processtime Control")
+
+# Rahmen für die Steuerelemente
+controls_frame = tk.Frame(window)
+controls_frame.pack(side=tk.LEFT, padx=10)
+
+
+# Eingabe der Flow Rate
+flow_rate_label = tk.Label(controls_frame, text="Flow Rate CO2 (1-400 l/h):")
+flow_rate_label.pack()
+
+entry = tk.Entry(controls_frame)
+entry.pack()
+
+# Button zum Setzen der Flow Rate
+set_button = tk.Button(controls_frame, text="Set Flow Rate", command=set_flow_rate)
+set_button.pack()
+
+# Button zum Stoppen der Flow Rate
+stop_button = tk.Button(controls_frame, text="Stop Flow Rate", command=stop_flow_rate)
+stop_button.pack()
+
+# Eingabefeld für Adsorption-Prozesszeit
+adsorption_label = tk.Label(controls_frame, text="Adsorption Processtime:")
+adsorption_label.pack()
+
+process_time_entry_adsorption = tk.Entry(controls_frame)
+process_time_entry_adsorption.pack()
+
+# Button für Adsorption Start
+adsorption_start_button = tk.Button(controls_frame, text="Start Adsorption", command=lambda: start_process("adsorption", process_time_entry_adsorption))
+adsorption_start_button.pack()
+
+# Button für Adsorption Stop
+adsorption_stop_button = tk.Button(controls_frame, text="Stop Adsorption", command=stop_process)
+adsorption_stop_button.pack()
+
+# Eingabefeld für Desorption-Prozesszeit
+desorption_label = tk.Label(controls_frame, text="Desorption Processtime:")
+desorption_label.pack()
+
+process_time_entry_desorption = tk.Entry(controls_frame)
+process_time_entry_desorption.pack()
+
+# Button für Desorption Start
+desorption_start_button = tk.Button(controls_frame, text="Start Desorption", command=lambda: start_process("desorption", process_time_entry_desorption))
+desorption_start_button.pack()
+
+# Button für Desorption Stop
+desorption_stop_button = tk.Button(controls_frame, text="Stop Desorption", command=stop_process)
+desorption_stop_button.pack()
+
+# Button für Temperaturmessung Start
+temperature_start_button = tk.Button(controls_frame, text="Start Temperature Measurement", command=start_temperature_measurement)
+temperature_start_button.pack()
+
+# Button für Temperaturmessung Stop
+temperature_stop_button = tk.Button(controls_frame, text="Stop Temperature Measurement", command=stop_temperature_measurement)
+temperature_stop_button.pack()
+
+# Button zum Speichern der Messwerte
+save_button = tk.Button(controls_frame, text="Save Temperatures", command=ask_save_temperatures)
+save_button.pack()
+
+exit_button = tk.Button(window, text="Exit", command=exit_program, bg="red", fg="white", padx=10, pady=5)
+exit_button.pack(side=tk.BOTTOM, padx=10, pady=10, anchor=tk.SE)
+
+# Label für Fehlermeldung
+error_label = tk.Label(controls_frame, text="", fg="red")
+error_label.pack()
+
+# Diagramm erstellen
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+temperatures = []
+line, = ax.plot([], [])
+ax.set_ylim(0, 100) # Anpassen der y-Achsen-Grenzen nach Bedarf
+
+ax.set_xlabel('Zeit in s')
+ax.set_ylabel('Temperatur in °C')
+
+ax.legend(['Position 1'])
+
+# Matplotlib-FigureCanvas in Tkinter einbetten
+canvas = FigureCanvasTkAgg(fig, master=window)
+canvas.draw()
+canvas.get_tk_widget().pack(side=tk.RIGHT, padx=10)
+
+# Animation starten
+ani = animation.FuncAnimation(fig, update_plot, interval=500, save_count=100)
+
+
+program_running = True
+# Tkinter-Schleife starten
+window.mainloop()
+
