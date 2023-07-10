@@ -12,8 +12,6 @@ from tkinter import messagebox
 import datetime
 import tkinter.filedialog
 
-
-
 UID_RELAY = "21y5"
 UID_RS232_CO2 = "VeS"
 UID_RS232_Air = "25nF"
@@ -50,28 +48,37 @@ temperature_measurement_active = False
 concentration_measurement_active = False
 save_temperatures = False
 save_concentration = False
+adsorption_active = False
+desorption_active = False
 
-
+# Erstellung von Listen zum Speichern der Daten
 timestamps = []
 temperature_values = []
 co2_concentration_values = []
 o2_concentration_values = []
-T_Wasser = []
+t_wasser = []
+
 
 def send_command_co2(command_co2):
     command_co2 += "\r\n"  # Hinzufügen von Carriage Return und Line Feed zum Befehl
     rs232_CO2.write(command_co2.encode())
 
+
 def send_command_air(command_air):
     command_air += "\r\n"
     rs232_Air.write(command_air.encode())
 
+
 def connect():
     ipcon.connect(HOST, PORT)
+
 
 def disconnect():
     ipcon.disconnect()
 
+
+# Eingabe von CO2 Volumenstrom (hier: max. 400) mit Konversionsfaktor
+# Umrechnung von Dezimalzahl in Hexadezimalzahl für MFC
 def set_flow_rate_co2():
     flow_rate_input_co2 = int(entry_CO2.get())
     konversion = float(entry_konversion.get())
@@ -90,6 +97,8 @@ def set_flow_rate_co2():
     flow_rate_command_co2 = f":0603010121{hex_value_str}"
     return flow_rate_command_co2
 
+
+# Gleiches Vorgehen wie bei CO2, jedoch kein Konversionsfaktor, da Gas hier = Luft
 def set_flow_rate_air():
     flow_rate_input_air = int(entry_Air.get())
     if flow_rate_input_air > 600:
@@ -106,18 +115,23 @@ def set_flow_rate_air():
     flow_rate_command_air = f":0603010121{hex_value_str}"
     return flow_rate_command_air
 
+
+# Senden der Eingegebenen Werte an MFC
 def start():
     flow_rate_command_co2 = set_flow_rate_co2()
     flow_rate_command_air = set_flow_rate_air()
     send_command_co2(flow_rate_command_co2)
     send_command_air(flow_rate_command_air)
 
+
+# Stop der Volumenströme (MFCs werden auf 0 l/h eingestellt)
 def stop_flow_rate():
-    # Befehl für 0 l/h erstellen und senden (letzte vier Ziffern für 0 l/h)
     command = ":06030101210000"
     send_command_co2(command)
     send_command_air(command)
 
+
+# Öfnnen der Ventile für Desorption bzw. Adsorption
 def start_process(process_type, process_time_entry):
     global adsorption_active, desorption_active
     if process_type == "adsorption":
@@ -131,6 +145,8 @@ def start_process(process_type, process_time_entry):
         if process_time_entry.get():
             window.after(int(process_time_entry.get()), stop_process)
 
+
+# Schließen aller Ventile
 def stop_process():
     global adsorption_active, desorption_active
     if adsorption_active:
@@ -140,16 +156,20 @@ def stop_process():
         reset_valves()
         desorption_active = False
 
+
+# Schließen aller Ventile
 def reset_valves():
     relay_bricklet.set_value([False, False, False, False])
 
+
 # Funktion zum Auslesen der Temperatur
 def read_temperature(thermocouple_name):
-    thermocouple = thermocouples.get(thermocouple_name)
-    if thermocouple:
-        return thermocouple.get_temperature() / 100
+    thermocouple_device = thermocouples.get(thermocouple_name)
+    if thermocouple_device:
+        return thermocouple_device.get_temperature() / 100
     else:
         raise ValueError("Invalid thermocouple name")
+
 
 def read_all_temperatures():
     temperatures = []
@@ -159,7 +179,8 @@ def read_all_temperatures():
         temperatures.append(temperature)
     return temperatures
 
-#Temperatur des Kühlbeckens und des Thermostats
+
+# Temperatur des Kühlbeckens und des Thermostats
 def update_temperature_display():
     temp1 = Temp_Becken.get_temperature() / 100.0
     temp2 = Temp_kuelung.get_temperature() / 100.0
@@ -168,19 +189,21 @@ def update_temperature_display():
     temperature_label2.config(font="Arial", text="Wasserbecken: {:.2f} °C".format(temp2))
     window.after(1000, update_temperature_display)
 
+
 # Funktion zum Auslesen der Temperatur im Wasserbecken
-def read_temperature_Wasserbecken():
+def read_temperature_wasserbecken():
     T_Wasser = Temp_Becken.get_temperature() / 100.0
     return T_Wasser
 
 
-#O2 und CO2 Konzentration anzeigen
-def update_O2_concentration_display():
+# O2 und CO2 Konzentration anzeigen
+def update_o2_concentration_display():
     mA_Sauerstoff = Gasanalysator.get_current(1)
     c_Sauerstoff = (mA_Sauerstoff-3981500)/160140
     concentration_o2_label1.config(font="Arial", text="O2 Konzentration: {:.2f} %".format(c_Sauerstoff))
-    window.after(2000, update_O2_concentration_display)
+    window.after(2000, update_o2_concentration_display)
 
+#Funktion zum Anzeigen der aktuellen CO2 Konzentration
 def update_CO2_concentration_display():
     mA_Sauerstoff = Gasanalysator.get_current(1)
     c_Sauerstoff = (mA_Sauerstoff-3981500)/160140
@@ -188,12 +211,14 @@ def update_CO2_concentration_display():
     concentration_co2_label1.config(font="Arial", text="CO2 Konzentration: {:.2f} %".format(c_CO2))
     window.after(2000, update_CO2_concentration_display)
 
+#Auslesen der CO2 Konzentrationen anhand der O2 Konzentration
 def CO2_konzentrationsmessung():
     mA_Sauerstoff = Gasanalysator.get_current(1)
     c_Sauerstoff = (mA_Sauerstoff - 3981500) / 160140
     c_CO2 = 100 - c_Sauerstoff / 0.21
     return c_CO2
 
+#Auslesen der O2 Konzentrationen
 def O2_konzentrationsmessung():
     mA_Sauerstoff = Gasanalysator.get_current(1)
     c_Sauerstoff = (mA_Sauerstoff - 3981500) / 160140
@@ -218,13 +243,13 @@ def read_o2_concentration():
 #funktion zur Aktualisierung des Diagramms
 def update_plot(frame):
     global temperaturliste_T_0, temperaturliste_T_1, temperaturliste_T_2,\
-        temperaturliste_T_3, temperaturliste_T_4, temperaturliste_T_5, CO2_Konzentration, O2_Konzentration, T_Wasser
+        temperaturliste_T_3, temperaturliste_T_4, temperaturliste_T_5, CO2_Konzentration, O2_Konzentration, t_wasser
     if temperature_measurement_active:
         timestamp = datetime.datetime.now()
         temperatures = read_all_temperatures()
         CO2_konzentration = read_co2_concentration()
         O2_konzentration = read_o2_concentration()
-        t_Wasser = read_temperature_Wasserbecken()
+        t_Wasser = read_temperature_wasserbecken()
         timestamps.append(timestamp)
         temperaturliste_T_0.append(temperatures[0])
         temperaturliste_T_1.append(temperatures[1])
@@ -234,7 +259,7 @@ def update_plot(frame):
         temperaturliste_T_5.append(temperatures[5])
         CO2_Konzentration.append(CO2_konzentration)
         O2_Konzentration.append(O2_konzentration)
-        T_Wasser.append(t_Wasser)
+        t_wasser.append(t_Wasser)
 
         line_T_0.set_data(range(len(temperaturliste_T_0)), temperaturliste_T_0)
         ax.set_xlim(0, len(temperaturliste_T_0))
@@ -255,9 +280,12 @@ def update_plot(frame):
         ax.set_xlim(0, len(temperaturliste_T_5))
     return line_T_0, line_T_1, line_T_2, line_T_3, line_T_4, line_T_5
 
-def start_temperature_measurement():
-    global temperature_measurement_active, concentration_measurement_active, timestamps, temperaturliste_T_0, temperaturliste_T_1, temperaturliste_T_2,\
-        temperaturliste_T_3, temperaturliste_T_4, temperaturliste_T_5, CO2_Konzentration, O2_Konzentration, t_Wasser
+
+# Start der Messung und Zwischenspeicherung der Daten in Listen
+def start_measurement():
+    global temperature_measurement_active, concentration_measurement_active, timestamps, temperaturliste_T_0, \
+        temperaturliste_T_1, temperaturliste_T_2, temperaturliste_T_3, temperaturliste_T_4, temperaturliste_T_5, \
+        CO2_Konzentration, O2_Konzentration, t_Wasser
     temperature_measurement_active = True
     concentration_measurement_active = True
     timestamps = []
@@ -271,60 +299,76 @@ def start_temperature_measurement():
     O2_Konzentration = []
     t_Wasser = []
 
-def stop_temperature_measurement():
-    global temperature_measurement_active, concentration_measurement_active
+
+# Stop der Messung und Abfrage, ob Daten gespeichert werden sollen. Nach Abfrage werden Listen wieder resettet
+def stop_measurement():
+    global temperature_measurement_active, concentration_measurement_active, timestamps, temperature_values, \
+        co2_concentration_values, o2_concentration_values, t_wasser
 
     temperature_measurement_active = False
     concentration_measurement_active = False
 
-    ask_save_temperatures()  # Call the function to ask whether to save temperatures or not
+    ask_save_data()  # Aufrufen der Funktion zum Speichern der gemessenen Daten
 
-    if not save_temperatures:
-        # Zurücksetzen der Timestamps und Temperaturen
+    if not save_temperatures:  # Reset der Datenlisten
         timestamps = []
-        temperatures = []
+        temperature_values = []
+        co2_concentration_values = []
+        o2_concentration_values = []
+        t_wasser = []
 
     line.set_data([], [])  # Werte aus Diagramm löschen
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 100)
 
-# Abfrage zur Speicherung des Temperaturmesswerte nach stoppen der Messung
-def ask_save_temperatures():
-    global save_temperatures, save_concentration
 
+# Abfrage zur Speicherung des Temperaturmesswerte nach stoppen der Messung
+def ask_save_data():
+    global save_temperatures, save_concentration, timestamps, temperature_values, co2_concentration_values, \
+        o2_concentration_values, t_wasser
     result = messagebox.askquestion("Messwerte speichern", "Sollen die Messwerte gespeichert werden?")
     if result == "yes":
         save_temperatures = True
         save_concentration = True
         # Dialogfenster zur Eingabe des Dateinamens
         filename = tk.filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
-
         if filename:
             # Messdaten speichern
             timestamp_strings = [timestamp.strftime('%Y-%m-%d %H:%M:%S.%f') for timestamp in
                                  timestamps]  # Include milliseconds
             df = pd.DataFrame({"Timestamp": timestamp_strings, "T_Eingang_Mitte": temperaturliste_T_0,
-                               "T_Eingang_Außen": temperaturliste_T_1, "T_4cm":temperaturliste_T_2,
+                               "T_Eingang_Außen": temperaturliste_T_1, "T_4cm": temperaturliste_T_2,
                                "T_8cm": temperaturliste_T_3, "T_16cm": temperaturliste_T_4,
-                               "momentan nicht verwendet": temperaturliste_T_5, "CO2 Konzentration in %": CO2_Konzentration,
-                               "O2 Konzentration in %": O2_Konzentration, "T Wasser": T_Wasser})
+                               "momentan nicht verwendet": temperaturliste_T_5, 
+                               "CO2 Konzentration in %": CO2_Konzentration,
+                               "O2 Konzentration in %": O2_Konzentration, "T Wasser": t_wasser})
             df.to_excel(filename, index=False)
             print("Messwerte gespeichert unter", filename)
+            # Datenlisten zurücksetzen
+            timestamps = []
+            temperature_values = [[], [], [], [], [], []]
+            co2_concentration_values = []
+            o2_concentration_values = []
+            t_wasser = []
     else:
         save_temperatures = False
         save_concentration = False
+        
+        
+# Programm schließen; Schleife wird beendet
 def exit_program():
     global program_running
     program_running = False
-    window.quit()  # Beendet die Tkinter-Schleife und damit das Programm
+    window.quit()
+
 
 # Fenster erstellen
 window = tk.Tk()
 window.title("CO2 Adsorption")
 window.columnconfigure(0, weight=2)
-window.columnconfigure(1, weight = 4)
+window.columnconfigure(1, weight=4)
 
-
+# In Folgendem Abschnitt werden Eingabefelder und Buttons und das Diagramm erstellt
 # Rahmen für die Steuerelemente
 controls_frame = tk.Frame(window)
 controls_frame.pack(side=tk.LEFT, padx=10)
@@ -373,7 +417,11 @@ process_time_entry_adsorption = tk.Entry(controls_frame)
 process_time_entry_adsorption.grid(row=5, column=1)
 
 # Button für Adsorption Start
-adsorption_start_button = tk.Button(controls_frame, text="Start Adsorption", command=lambda: start_process("adsorption", process_time_entry_adsorption))
+adsorption_start_button = tk.Button(
+    controls_frame, text="Start Adsorption",
+    command=lambda: start_process("adsorption", process_time_entry_adsorption)
+)
+
 adsorption_start_button.grid(row=6, column=0, columnspan=2)
 
 # Button für Adsorption Stop
@@ -388,7 +436,11 @@ process_time_entry_desorption = tk.Entry(controls_frame)
 process_time_entry_desorption.grid(row=8, column=1)
 
 # Button für Desorption Start
-desorption_start_button = tk.Button(controls_frame, text="Start Desorption", command=lambda: start_process("desorption", process_time_entry_desorption))
+desorption_start_button = tk.Button(
+    controls_frame, 
+    text="Start Desorption", 
+    command=lambda: start_process("desorption", process_time_entry_desorption)
+)
 desorption_start_button.grid(row=9, column=0, columnspan=2, pady=2)
 
 # Button für Desorption Stop
@@ -396,34 +448,34 @@ desorption_stop_button = tk.Button(controls_frame, text="Stop Desorption", comma
 desorption_stop_button.grid(row=10, column=0, columnspan=2)
 
 # Button für Temperaturmessung Start
-temperature_start_button = tk.Button(controls_frame, text="Messung starten", command=start_temperature_measurement)
+temperature_start_button = tk.Button(controls_frame, text="Messung starten", command=start_measurement)
 temperature_start_button.grid(row=16, column=2, pady=2, sticky=tk.W)
 
 # Button für Temperaturmessung Stop
-temperature_stop_button = tk.Button(controls_frame, text="Messung stoppen", command=stop_temperature_measurement)
+temperature_stop_button = tk.Button(controls_frame, text="Messung stoppen", command=stop_measurement)
 temperature_stop_button.grid(row=17, column=2, pady=2, sticky=tk.W)
 
 # Button zum Speichern der Messwerte
-#save_button = tk.Button(controls_frame, text="Save Temperatures", command=ask_save_temperatures)
-#save_button.grid(row=13, column=0, columnspan=2)
+# save_button = tk.Button(controls_frame, text="Save Temperatures", command=ask_save_temperatures)
+# save_button.grid(row=13, column=0, columnspan=2)
 
 exit_button = tk.Button(window, text="Exit", command=exit_program, bg="red", fg="white", padx=10, pady=5)
 exit_button.pack(side=tk.BOTTOM, padx=10, pady=10, anchor=tk.SE)
 
-#Temperaturanzeige für Umwälzthermostat und Wasserbecken
+# Temperaturanzeige für Umwälzthermostat und Wasserbecken
 temperature_label1 = tk.Label(controls_frame, text="Thermostat: ")
 temperature_label1.grid(row=15, column=0, columnspan=2, sticky=tk.W, pady=2)
 
 temperature_label2 = tk.Label(controls_frame, text="Wasserbecken: ")
 temperature_label2.grid(row=16, column=0, columnspan=2, sticky=tk.W, pady=2)
 
-#Konzentrationsanzeige CO2
+# Konzentrationsanzeige CO2
 concentration_co2_label1 = tk.Label(controls_frame, text="CO2 Konzentration: ")
-concentration_co2_label1.grid(row= 17, column = 0, columnspan =2, sticky=tk.W, pady=2)
+concentration_co2_label1.grid(row=17, column=0, columnspan=2, sticky=tk.W, pady=2)
 
-#Konzentrationsanzeige O2
+# Konzentrationsanzeige O2
 concentration_o2_label1 = tk.Label(controls_frame, text="O2 Konzentration: ")
-concentration_o2_label1.grid(row= 18, column = 0, columnspan =2, sticky=tk.W, pady=2)
+concentration_o2_label1.grid(row=18, column=0, columnspan=2, sticky=tk.W, pady=2)
 
 # Diagramm erstellen
 fig = plt.figure()
@@ -458,7 +510,7 @@ ani = animation.FuncAnimation(fig, update_plot, interval=1000, save_count=100)
 
 update_temperature_display()
 update_CO2_concentration_display()
-update_O2_concentration_display()
+update_o2_concentration_display()
 
 program_running = True
 # Tkinter-Schleife starten
