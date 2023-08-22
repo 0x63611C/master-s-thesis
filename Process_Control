@@ -18,8 +18,8 @@ UID_RS232_Air = "25nF"
 UID_Ind_Dual = "Prs"
 UID_T_1, UID_T_2, UID_T_3, UID_T_4, UID_T_5, UID_T_6 = \
     "26Xc", "26Xf", "26Xj", "26Xa", "WSV", "26Xi"
-UID_Kuehlung = "26Xd"
-UID_Becken = "WTs"
+UID_Becken_1 = "26Xd"
+UID_Becken_2 = "WTs"
 
 HOST = "localhost"
 PORT = 4223
@@ -28,8 +28,8 @@ ipcon = IPConnection()
 relay_bricklet = BrickletIndustrialQuadRelayV2(UID_RELAY, ipcon)
 rs232_CO2 = BrickletRS232V2(UID_RS232_CO2, ipcon)
 rs232_Air = BrickletRS232V2(UID_RS232_Air, ipcon)
-Temp_kuelung = BrickletThermocoupleV2(UID_Kuehlung, ipcon)
-Temp_Becken = BrickletThermocoupleV2(UID_Becken, ipcon)
+Temp_Becken_1 = BrickletThermocoupleV2(UID_Becken_1, ipcon)
+Temp_Becken_2 = BrickletThermocoupleV2(UID_Becken_2, ipcon)
 Gasanalysator = BrickletIndustrialDual020mAV2(UID_Ind_Dual, ipcon)
 thermocouples = {}
 
@@ -56,7 +56,8 @@ timestamps = []
 temperature_values = []
 co2_concentration_values = []
 o2_concentration_values = []
-t_wasser = []
+t_wasserbecken_1 = []
+t_wasserbecken_2 = []
 
 
 def send_command_co2(command_co2):
@@ -182,18 +183,23 @@ def read_all_temperatures():
 
 # Temperatur des Kühlbeckens und des Thermostats
 def update_temperature_display():
-    temp1 = Temp_Becken.get_temperature() / 100.0
-    temp2 = Temp_kuelung.get_temperature() / 100.0
+    temp1 = Temp_Becken_2.get_temperature() / 100.0
+    temp2 = Temp_Becken_1.get_temperature() / 100.0
 
-    temperature_label1.config(font="Arial", text="Thermostat: {:.2f} °C".format(temp1))
-    temperature_label2.config(font="Arial", text="Wasserbecken: {:.2f} °C".format(temp2))
+    temperature_label1.config(font="Arial", text="Wasserbecken 1: {:.2f} °C".format(temp1))
+    temperature_label2.config(font="Arial", text="Wasserbecken 2: {:.2f} °C".format(temp2))
     window.after(1000, update_temperature_display)
 
 
-# Funktion zum Auslesen der Temperatur im Wasserbecken
-def read_temperature_wasserbecken():
-    T_Wasser = Temp_Becken.get_temperature() / 100.0
-    return T_Wasser
+# Funktion zum Auslesen der Temperatur im Wasserbecken 1
+def read_temperature_wasserbecken_1():
+    T_Wasser_1 = Temp_Becken_1.get_temperature() / 100.0
+    return T_Wasser_1
+
+# Funktion zum Auslesen der Temperatur im Wasserbecken 1
+def read_temperature_wasserbecken_2():
+    T_Wasser_2 = Temp_Becken_2.get_temperature() / 100.0
+    return T_Wasser_2
 
 
 # O2 und CO2 Konzentration anzeigen
@@ -243,13 +249,14 @@ def read_o2_concentration():
 #funktion zur Aktualisierung des Diagramms
 def update_plot(frame):
     global temperaturliste_T_0, temperaturliste_T_1, temperaturliste_T_2,\
-        temperaturliste_T_3, temperaturliste_T_4, temperaturliste_T_5, CO2_Konzentration, O2_Konzentration, t_wasser
+        temperaturliste_T_3, temperaturliste_T_4, temperaturliste_T_5, CO2_Konzentration, O2_Konzentration, t_wasserbecken_1, t_wasserbecken_2
     if temperature_measurement_active:
         timestamp = datetime.datetime.now()
         temperatures = read_all_temperatures()
         CO2_konzentration = read_co2_concentration()
         O2_konzentration = read_o2_concentration()
-        t_Wasser = read_temperature_wasserbecken()
+        t_Wasser_1 = read_temperature_wasserbecken_1()
+        t_Wasser_2 = read_temperature_wasserbecken_2()
         timestamps.append(timestamp)
         temperaturliste_T_0.append(temperatures[0])
         temperaturliste_T_1.append(temperatures[1])
@@ -259,7 +266,8 @@ def update_plot(frame):
         temperaturliste_T_5.append(temperatures[5])
         CO2_Konzentration.append(CO2_konzentration)
         O2_Konzentration.append(O2_konzentration)
-        t_wasser.append(t_Wasser)
+        t_wasserbecken_1.append(t_Wasser_1)
+        t_wasserbecken_2.append(t_Wasser_2)
 
         line_T_0.set_data(range(len(temperaturliste_T_0)), temperaturliste_T_0)
         ax.set_xlim(0, len(temperaturliste_T_0))
@@ -303,7 +311,7 @@ def start_measurement():
 # Stop der Messung und Abfrage, ob Daten gespeichert werden sollen. Nach Abfrage werden Listen wieder resettet
 def stop_measurement():
     global temperature_measurement_active, concentration_measurement_active, timestamps, temperature_values, \
-        co2_concentration_values, o2_concentration_values, t_wasser
+        co2_concentration_values, o2_concentration_values, t_wasserbecken_1, t_wasserbecken_2
 
     temperature_measurement_active = False
     concentration_measurement_active = False
@@ -315,7 +323,8 @@ def stop_measurement():
         temperature_values = []
         co2_concentration_values = []
         o2_concentration_values = []
-        t_wasser = []
+        t_wasserbecken_1 = []
+        t_wasserbecken_2 = []
 
     line.set_data([], [])  # Werte aus Diagramm löschen
     ax.set_xlim(0, 1)
@@ -325,7 +334,7 @@ def stop_measurement():
 # Abfrage zur Speicherung des Temperaturmesswerte nach stoppen der Messung
 def ask_save_data():
     global save_temperatures, save_concentration, timestamps, temperature_values, co2_concentration_values, \
-        o2_concentration_values, t_wasser
+        o2_concentration_values, t_wasserbecken_1, t_wasserbecken_2
     result = messagebox.askquestion("Messwerte speichern", "Sollen die Messwerte gespeichert werden?")
     if result == "yes":
         save_temperatures = True
@@ -341,7 +350,8 @@ def ask_save_data():
                                "T_8cm": temperaturliste_T_3, "T_16cm": temperaturliste_T_4,
                                "momentan nicht verwendet": temperaturliste_T_5,
                                "CO2 Konzentration in %": CO2_Konzentration,
-                               "O2 Konzentration in %": O2_Konzentration, "T Wasser": t_wasser})
+                               "O2 Konzentration in %": O2_Konzentration, "T Wasserbecken 1": t_wasserbecken_1,
+                               "T Wasserbecken 2": t_wasserbecken_2})
             df.to_excel(filename, index=False)
             print("Messwerte gespeichert unter", filename)
             # Datenlisten zurücksetzen
@@ -349,7 +359,8 @@ def ask_save_data():
             temperature_values = [[], [], [], [], [], []]
             co2_concentration_values = []
             o2_concentration_values = []
-            t_wasser = []
+            t_wasserbecken_1 = []
+            t_wasserbecken_2 = []
     else:
         save_temperatures = False
         save_concentration = False
@@ -463,10 +474,10 @@ exit_button = tk.Button(window, text="Exit", command=exit_program, bg="red", fg=
 exit_button.pack(side=tk.BOTTOM, padx=10, pady=10, anchor=tk.SE)
 
 # Temperaturanzeige für Umwälzthermostat und Wasserbecken
-temperature_label1 = tk.Label(controls_frame, text="Thermostat: ")
+temperature_label1 = tk.Label(controls_frame, text="Wasserbecken 1: ")
 temperature_label1.grid(row=15, column=0, columnspan=2, sticky=tk.W, pady=2)
 
-temperature_label2 = tk.Label(controls_frame, text="Wasserbecken: ")
+temperature_label2 = tk.Label(controls_frame, text="Wasserbecken 2: ")
 temperature_label2.grid(row=16, column=0, columnspan=2, sticky=tk.W, pady=2)
 
 # Konzentrationsanzeige CO2
