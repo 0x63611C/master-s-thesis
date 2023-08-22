@@ -339,7 +339,7 @@ def ask_save_data():
             df = pd.DataFrame({"Timestamp": timestamp_strings, "T_Eingang_Mitte": temperaturliste_T_0,
                                "T_Eingang_Außen": temperaturliste_T_1, "T_4cm": temperaturliste_T_2,
                                "T_8cm": temperaturliste_T_3, "T_16cm": temperaturliste_T_4,
-                               "momentan nicht verwendet": temperaturliste_T_5, 
+                               "momentan nicht verwendet": temperaturliste_T_5,
                                "CO2 Konzentration in %": CO2_Konzentration,
                                "O2 Konzentration in %": O2_Konzentration, "T Wasser": t_wasser})
             df.to_excel(filename, index=False)
@@ -353,8 +353,8 @@ def ask_save_data():
     else:
         save_temperatures = False
         save_concentration = False
-        
-        
+
+
 # Programm schließen; Schleife wird beendet
 def exit_program():
     global program_running
@@ -437,8 +437,8 @@ process_time_entry_desorption.grid(row=8, column=1)
 
 # Button für Desorption Start
 desorption_start_button = tk.Button(
-    controls_frame, 
-    text="Start Desorption", 
+    controls_frame,
+    text="Start Desorption",
     command=lambda: start_process("desorption", process_time_entry_desorption)
 )
 desorption_start_button.grid(row=9, column=0, columnspan=2, pady=2)
